@@ -11,31 +11,23 @@ class MYLCD {
  public:
   MYLCD(PortName _port, PinName wr, PinName rs, PinName reset, PinName cs)
       : port(_port), wrPin(wr), rsPin(rs), resetPin(reset), csPin(cs) {
-    csPin = 1;  // TODO: datasheet says it should be low in 4.1 DBI
+    csPin = 0;  // must be low according to 4.1 DBI in datasheet
     reset_init();
-    // send_cmd(0x28); //display off
-    // wait(2);
-    // send_cmd(0x29); // display on
   }
   void send_cmd(uint8_t cmd) {
     rsPin = 0;
-    port.write(cmd);
-    strobe();
-    rsPin = 1;
-  }
-  void strobe() {
-    wrPin = 1;
-    wait_ms(2);
     wrPin = 0;
-    wait_ms(2);
+    port.write(cmd);
+    wrPin = 1;
   }
-  void send_data(uint8_t data) {
-    rsPin = 1;  // TODO: unnecessary
+  void send_data(uint16_t data) {
+    rsPin = 1;
+    wrPin = 0;
     port.write(data);
-    strobe();
+    wrPin = 1;
   }
   void setPixel(uint16_t color, int x, int y) {
-    //        setXY(x,y,x,y);
+    setXY(x,y,x,y);
     send_data(color);
   }
   void setXY(int x1, int y1, int x2, int y2) {
@@ -53,12 +45,16 @@ class MYLCD {
   }
   void reset_init(void) {
     resetPin = 0;
-    wait_ms(20);
+    wait_ms(120); // just in case
     resetPin = 1;
-    wait_ms(200);
+    wait_ms(100); // >100ms 6.2.13 Exit_sleep_omde (11h) and 5.14.3 Programming sequence
+
+    // set default pin values (just in case)
     wrPin = 0;
     rsPin = 1;
-    send_cmd(0x11);  // Sleep Out
+
+    // Sleep Out
+    send_cmd(0x11);
     wait_ms(120);
 
     // Set EQ
@@ -185,15 +181,25 @@ class MYLCD {
 };
 
 int main() {
+/*
   PortOut port(PortG);
+  //BusOut port(PD_8, PD_10, PD_12, PD_14);
+  //BusOut port(PD_12);
+
   while (1) {
-    port.write(0xFFFF);
+    port.write(0xAAAA);
     wait_ms(5);
     port.write(0);
     wait_ms(5);
   }
-  //    MYLCD lcd(port, wr, reset, cs);
-  //    for (int x=0; x<300; x++) {
-  //        lcd.setPixel(0xaaaa, x,x);
-  //    }
+*/
+
+#define COLOR 0x0F0F
+  MYLCD lcd(PortG, PD_14, PD_10, PD_12, PD_8);
+  for (int x=0; x<300; x++) {
+    lcd.setPixel(COLOR, x,x);
+    lcd.setPixel(COLOR, x+1,x);
+    lcd.setPixel(COLOR, x+2,x);
+    lcd.setPixel(COLOR, x+3,x);
+  }
 }
