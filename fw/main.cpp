@@ -1,4 +1,12 @@
 #include "mbed.h"
+#include "simple_font.h"
+#include <cstdarg>
+
+#define WHITE 0xFFFF
+#define BLACK 0x0000
+
+typedef uint16_t u16;
+typedef uint8_t u8;
 
 class MYLCD {
  private:
@@ -7,6 +15,8 @@ class MYLCD {
   DigitalOut rsPin;  // command/data
   DigitalOut resetPin;
   DigitalOut csPin;
+  uint16_t size_x = 480;
+  uint16_t size_y = 320;
 
  public:
   MYLCD(PortName _port, PinName wr, PinName rs, PinName reset, PinName cs)
@@ -26,8 +36,8 @@ class MYLCD {
     port.write(data);
     wrPin = 1;
   }
-  void setPixel(uint16_t color, int x, int y) {
-    setXY(x,y,x,y);
+  void setPixelXY(uint16_t color, int x, int y) {
+    setXY(y, x, y, x);
     send_data(color);
   }
   void setXY(int x1, int y1, int x2, int y2) {
@@ -43,11 +53,107 @@ class MYLCD {
     send_data(y2);
     send_cmd(0x2c);
   }
+  void fill_screen(uint16_t color = 0xFFFF) {
+    for (int y = 0; y < size_y; y++) {
+      for (int x = 0; x < size_x; x++) {
+        setPixelXY(color, x, y);
+      }
+    }
+  }
+  void draw_rect(u16 x, u16 y, u16 w, u16 h, u16 color = WHITE) {
+    uint16_t _width = size_x;
+    uint16_t _height = size_y;
+    // rudimentary clipping (drawChar w/big text requires this)
+    if ((x >= _width) || (y >= _height))
+      return;
+    if ((x + w - 1) >= _width)
+      w = _width - x;
+    if ((y + h - 1) >= _height)
+      h = _height - y;
+
+    SetAddrWindow(x, y, x + w - 1, y + h - 1);
+
+    rsPin = 1;
+    for (y = h; y > 0; y--) {
+      for (x = w; x > 0; x--) {
+        port.write(color);
+        wrPin = 0;
+        wrPin = 1;
+      }
+    }
+  }
+
+  void SetAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+    send_cmd(0x2A);  // Column addr set
+    send_data(x0 >> 8);
+    send_data(x0 & 0xFF);  // XSTART
+    send_data(x1 >> 8);
+    send_data(x1 & 0xFF);  // XEND
+
+    send_cmd(0x2B);  // Row addr set
+    send_data(y0 >> 8);
+    send_data(y0);  // YSTART
+    send_data(y1 >> 8);
+    send_data(y1);  // YEND
+
+    send_cmd(0x2C);  // write to RAM
+  }
+  void printf(u16 x, u16 y, u16 size, u16 color, const char* fmt, ...) {
+    char buf[100];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    print(buf, x, y, size, color);
+    va_end(args);
+  }
+  // from ILI9340_Display driver that origins from many sources like Adafruit
+  // library
+  void print(char* str, u16 x, u16 y, u16 size = 4, u16 color = WHITE) {
+    int len = strlen(str);
+    for (int pos = 0; pos < len; pos++) {
+      draw_char(str[pos], x + 6 * pos * size, y, size, color);
+    }
+  }
+  void draw_char(unsigned char ascii,
+                 u16 x,
+                 u16 y,
+                 u16 size = 4,
+                 u16 color = WHITE) {
+    char orientation = '3';
+    SetAddrWindow(x, y, x + size, y + size);
+
+    if ((ascii < 0x20) || (ascii > 0x7e))  // check for valid ASCII char
+    {
+      ascii = '?';  // char not supported
+    }
+    for (unsigned char i = 0; i < 8; i++) {
+      unsigned char temp = simpleFont[ascii - 0x20][i];
+      for (unsigned char f = 0; f < 8; f++) {
+        if ((temp >> f) & 0x01) {
+          switch (orientation) {
+            case '0':
+              draw_rect(x + f * size, y - i * size, size, size, color);
+              break;
+            case '1':
+              draw_rect(x - i * size, x - f * size, size, size, color);
+              break;
+            case '2':
+              draw_rect(x - f * size, y + i * size, size, size, color);
+              break;
+            case '3':
+            default:
+              draw_rect(x + i * size, y + f * size, size, size, color);
+          }
+        }
+      }
+    }
+  }
   void reset_init(void) {
     resetPin = 0;
-    wait_ms(120); // just in case
+    wait_ms(5);  // just in case
     resetPin = 1;
-    wait_ms(100); // >100ms 6.2.13 Exit_sleep_omde (11h) and 5.14.3 Programming sequence
+    wait_ms(100);  // >100ms 6.2.13 Exit_sleep_omde (11h) and 5.14.3 Programming
+                   // sequence
 
     // set default pin values (just in case)
     wrPin = 0;
@@ -181,6 +287,7 @@ class MYLCD {
 };
 
 int main() {
+  AnalogIn in(PF_4);
 /*
   PortOut port(PortG);
   //BusOut port(PD_8, PD_10, PD_12, PD_14);
@@ -194,12 +301,34 @@ int main() {
   }
 */
 
-#define COLOR 0x0F0F
+//calc 2.93 32740
+//calc 29300*cur/32740
+#define COLOR 0xF0F0
   MYLCD lcd(PortG, PD_14, PD_10, PD_12, PD_8);
-  for (int x=0; x<300; x++) {
-    lcd.setPixel(COLOR, x,x);
-    lcd.setPixel(COLOR, x+1,x);
-    lcd.setPixel(COLOR, x+2,x);
-    lcd.setPixel(COLOR, x+3,x);
+  lcd.fill_screen(BLACK);
+  // lcd.draw_rect(0xFF00, 100,100, 200,200);
+  // lcd.draw_char('A', 100,100, 6);
+  // lcd.draw_char('B', 130,100, 6);
+  // lcd.printf(0,0,4,WHITE, "%d Hz", SystemCoreClock);
+  u8 adcidx = 0;
+  u16 adcbuf[100];
+  uint32_t adcval = 0;
+  while (1) {
+    char buf[100];
+    adcbuf[(adcidx++) %100] = in.read_u16();
+    adcval = 0;
+    for(int idx=0; idx<100; idx++) {
+      adcval += adcbuf[idx];
+    }
+    adcval /= sizeof(adcbuf);
+
+    if(adcidx%30) {
+      continue;
+    }
+    uint32_t micro = 29300 * adcval / 32740;
+    snprintf(buf, sizeof(buf), "%d.%d", micro/1000, micro%1000);
+    lcd.printf(0, 0, 8, 0xFF00, "%s", buf);
+    wait_ms(200);
+    lcd.printf(0, 0, 8, BLACK, "%s", buf);
   }
 }
