@@ -13,7 +13,7 @@ LINKER_SCRIPT = ./mbed/targets/cmsis/TARGET_STM/TARGET_STM32F4/TARGET_DISCO_F429
 ############################################################################### 
 AS      = $(GCC_BIN)arm-none-eabi-as
 CC      = $(GCC_BIN)arm-none-eabi-gcc
-CPP     = $(GCC_BIN)arm-none-eabi-g++
+CPP     = $(GCC_BIN)arm-none-eabi-g++ -std=gnu++11
 LD      = $(GCC_BIN)arm-none-eabi-gcc
 OBJCOPY = $(GCC_BIN)arm-none-eabi-objcopy
 OBJDUMP = $(GCC_BIN)arm-none-eabi-objdump
